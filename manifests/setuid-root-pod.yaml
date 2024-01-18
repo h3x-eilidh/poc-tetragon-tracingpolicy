@@ -1,0 +1,45 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: setuid-root-pod
+spec:
+  initContainers:
+  - name: init-gcc
+    image: ubuntu:latest
+    command: ["/bin/bash", "-c"]
+    volumeMounts:
+    - name: source
+      mountPath: /src
+    args:
+      - |
+        apt-get update && apt-get install -y gcc
+        cat <<EOF > /src/setuid-root.c
+        #define _GNU_SOURCE
+        #include <stdio.h>
+        #include <stdlib.h>
+        #include <unistd.h>
+        #include <sys/wait.h>
+        int main() {
+            if (setuid(0) == 0) {
+                printf("Privilege escalation successful. This process now has root privileges (UID: %d)\n", getuid());
+                } else {
+                perror("Privilege escalation failed");
+                }
+            return 0;
+        }
+        EOF
+        gcc /src/setuid-root.c -o /src/setuid-root
+  containers:
+  - name: run-container
+    image: ubuntu:latest
+    command: ["/bin/bash"]
+    args: ["-c", "while true; do /src/setuid-root; sleep 5; done"]
+    securityContext:
+      runAsUser: 1000
+      runAsGroup: 1000
+    volumeMounts:
+    - name: source
+      mountPath: /src
+  volumes:
+  - name: source
+    emptyDir: {}
